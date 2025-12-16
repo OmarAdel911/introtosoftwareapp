@@ -1,0 +1,657 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String               @id @default(uuid())
+  name                String
+  email               String               @unique
+  password            String
+  role                Role                 @default(FREELANCER)
+  image               String?
+  bio                 String?              @db.Text
+  skills              Json?
+  hourlyRate          Float?
+  phone               String?
+  location            String?
+  website             String?
+  linkedin            String?
+  github              String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  lastActiveAt        DateTime?            @default(now())
+  analytics           Analytics[]
+  auditLogs           AuditLog[]
+  billing             Billing?
+  certifications      Certification[]
+  receivedMessages    ChatMessage[]        @relation("ReceivedMessages")
+  sentMessages        ChatMessage[]        @relation("SentMessages")
+  connects            Connect[]
+  connectTransactions ConnectTransaction[]
+  credits             Credit[]
+  receivedDisputes    Dispute[]            @relation("ReceivedDisputes")
+  disputes            Dispute[]            @relation("UserDisputes")
+  files               FileStorage[]
+  idVerification      IdVerification?
+  jobs                Job[]                @relation("ClientJobs")
+  notifications       Notification[]
+  receivedPayments    Payment[]            @relation("ReceivedPayments")
+  payments            Payment[]            @relation("UserPayments")
+  portfolio           Portfolio[]
+  proposals           Proposal[]
+  receivedReviews     Review[]             @relation("ReceivedReviews")
+  reviews             Review[]             @relation("UserReviews")
+  security            Security?
+  timeEntries         TimeEntry[]
+  preferences         UserPreferences?
+  webhooks            Webhook[]
+  createdTickets      Ticket[]             @relation("TicketCreator")
+  assignedTickets     Ticket[]             @relation("TicketAssignee")
+
+  @@index([email])
+}
+
+model Job {
+  id          String      @id @default(uuid())
+  title       String
+  description String      @db.Text
+  budget      Float
+  skills      Json
+  category    String
+  status      JobStatus   @default(OPEN)
+  postedAt    DateTime    @default(now())
+  deadline    DateTime?
+  clientId    String
+  duration    String      @default("1_to_3_months")
+  experience  String      @default("intermediate")
+  jobType     String      @default("fixed")
+  location    String      @default("remote")
+  disputes    Dispute[]
+  client      User        @relation("ClientJobs", fields: [clientId], references: [id])
+  payments    Payment[]
+  proposals   Proposal[]
+  reviews     Review[]
+  timeEntries TimeEntry[]
+
+  @@index([clientId])
+}
+
+model Proposal {
+  id           String         @id @default(uuid())
+  coverLetter  String         @db.Text
+  amount       Float
+  status       ProposalStatus @default(PENDING)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  jobId        String
+  freelancerId String
+  contract     Contract?
+  freelancer   User           @relation(fields: [freelancerId], references: [id])
+  job          Job            @relation(fields: [jobId], references: [id])
+
+  @@index([jobId])
+  @@index([freelancerId])
+}
+
+model Review {
+  id             String   @id @default(uuid())
+  rating         Int
+  comment        String?  @db.Text
+  createdAt      DateTime @default(now())
+  userId         String
+  jobId          String
+  reviewedUserId String
+  job            Job      @relation(fields: [jobId], references: [id])
+  reviewedUser   User     @relation("ReceivedReviews", fields: [reviewedUserId], references: [id])
+  user           User     @relation("UserReviews", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([jobId])
+  @@index([reviewedUserId])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  amount        Float
+  status        PaymentStatus @default(PENDING)
+  method        String
+  transactionId String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  jobId         String
+  userId        String
+  freelancerId  String
+  freelancer    User          @relation("ReceivedPayments", fields: [freelancerId], references: [id])
+  job           Job           @relation(fields: [jobId], references: [id])
+  user          User          @relation("UserPayments", fields: [userId], references: [id])
+
+  @@index([jobId])
+  @@index([userId])
+  @@index([freelancerId])
+}
+
+model ChatMessage {
+  id          String   @id @default(uuid())
+  content     String   @db.Text
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  senderId    String
+  recipientId String
+  recipient   User     @relation("ReceivedMessages", fields: [recipientId], references: [id])
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id])
+
+  @@index([senderId])
+  @@index([recipientId])
+}
+
+model Portfolio {
+  id          String   @id @default(uuid())
+  title       String
+  description String   @db.Text
+  imageUrl    String?
+  projectUrl  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model TimeEntry {
+  id          String          @id @default(uuid())
+  description String          @db.Text
+  startTime   DateTime
+  endTime     DateTime?
+  duration    Int?
+  status      TimeEntryStatus @default(IN_PROGRESS)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  userId      String
+  jobId       String
+  job         Job             @relation(fields: [jobId], references: [id])
+  user        User            @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([jobId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  message   String   @db.Text
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Security {
+  id                 String   @id @default(uuid())
+  twoFactorEnabled   Boolean  @default(false)
+  twoFactorSecret    String?
+  lastPasswordChange DateTime @default(now())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Billing {
+  id             String @id @default(uuid())
+  plan           String @default("FREE")
+  paymentMethod  Json?
+  billingAddress Json?
+  userId         String @unique
+  user           User   @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Certification {
+  id            String    @id @default(uuid())
+  name          String
+  issuer        String
+  issueDate     DateTime
+  expiryDate    DateTime?
+  credentialId  String?
+  credentialUrl String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Dispute {
+  id           String        @id @default(uuid())
+  title        String
+  description  String        @db.Text
+  status       DisputeStatus @default(OPEN)
+  resolution   String?       @db.Text
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  jobId        String
+  userId       String
+  respondentId String
+  job          Job           @relation(fields: [jobId], references: [id])
+  respondent   User          @relation("ReceivedDisputes", fields: [respondentId], references: [id])
+  user         User          @relation("UserDisputes", fields: [userId], references: [id])
+
+  @@index([jobId])
+  @@index([userId])
+  @@index([respondentId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  userId     String
+  changes    Json
+  createdAt  DateTime @default(now())
+  entityId   String
+  entityType String
+  ipAddress  String?
+  metadata   Json?
+  userAgent  String?
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([createdAt])
+}
+
+model SystemMetrics {
+  id         String   @id @default(uuid())
+  timestamp  DateTime @default(now())
+  metadata   Json?
+  metricType String
+  value      Float
+
+  @@index([metricType])
+  @@index([timestamp])
+}
+
+model Language {
+  id           String        @id @default(uuid())
+  code         String        @unique
+  name         String
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  translations Translation[]
+}
+
+model Translation {
+  id           String   @id @default(uuid())
+  key          String
+  value        String   @db.Text
+  languageCode String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  language     Language @relation(fields: [languageCode], references: [code])
+
+  @@unique([key, languageCode])
+  @@index([languageCode])
+}
+
+model Region {
+  id        String    @id @default(uuid())
+  name      String
+  code      String    @unique
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  countries Country[]
+}
+
+model Country {
+  id         String     @id @default(uuid())
+  name       String
+  code       String     @unique
+  isActive   Boolean    @default(true)
+  regionId   String
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  region     Region     @relation(fields: [regionId], references: [id])
+  currencies Currency[]
+  timezones  Timezone[]
+
+  @@index([regionId])
+}
+
+model Currency {
+  id                    String                 @id @default(uuid())
+  name                  String
+  code                  String                 @unique
+  symbol                String
+  isActive              Boolean                @default(true)
+  countryId             String
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  country               Country                @relation(fields: [countryId], references: [id])
+  exchangeRatesAsBase   CurrencyExchangeRate[] @relation("BaseCurrency")
+  exchangeRatesAsTarget CurrencyExchangeRate[] @relation("TargetCurrency")
+
+  @@index([countryId])
+}
+
+model Timezone {
+  id        String   @id @default(uuid())
+  name      String
+  code      String   @unique
+  offset    String
+  isActive  Boolean  @default(true)
+  countryId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  country   Country  @relation(fields: [countryId], references: [id])
+
+  @@index([countryId])
+}
+
+model CurrencyExchangeRate {
+  id                     String   @id @default(uuid())
+  baseCurrency           String
+  targetCurrencyCode     String
+  rate                   Float
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+  baseCurrencyRelation   Currency @relation("BaseCurrency", fields: [baseCurrency], references: [code])
+  targetCurrencyRelation Currency @relation("TargetCurrency", fields: [targetCurrencyCode], references: [code])
+
+  @@unique([baseCurrency, targetCurrencyCode])
+  @@index([baseCurrency])
+  @@index([targetCurrencyCode])
+}
+
+model UserPreferences {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  languageCode String?
+  countryCode  String?
+  currencyCode String?
+  timezone     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Analytics {
+  id        String   @id @default(uuid())
+  eventType String
+  eventData Json
+  userId    String?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  metadata  Json?
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([eventType])
+  @@index([createdAt])
+}
+
+model FileStorage {
+  id            String    @id @default(uuid())
+  filename      String
+  path          String
+  mimeType      String
+  size          Int
+  metadata      Json?
+  userId        String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  isPublic      Boolean   @default(false)
+  expiresAt     DateTime?
+  cloudinaryUrl String
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model Webhook {
+  id              String       @id @default(uuid())
+  url             String
+  events          Json
+  secret          String
+  isActive        Boolean      @default(true)
+  userId          String
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  lastTriggeredAt DateTime?
+  metadata        Json?
+  user            User         @relation(fields: [userId], references: [id])
+  logs            WebhookLog[]
+
+  @@index([userId])
+  @@index([isActive])
+}
+
+model WebhookLog {
+  id        String   @id @default(uuid())
+  webhookId String
+  event     String
+  payload   Json
+  status    Int
+  response  Json?
+  createdAt DateTime @default(now())
+  webhook   Webhook  @relation(fields: [webhookId], references: [id])
+
+  @@index([webhookId])
+  @@index([createdAt])
+}
+
+model Credit {
+  id          String       @id @default(uuid())
+  amount      Float
+  type        CreditType
+  status      CreditStatus @default(ACTIVE)
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  userId      String
+  description String?      @db.Text
+  sourceId    String?
+  sourceType  String?
+  user        User         @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([sourceId])
+}
+
+model IdVerification {
+  id                 String             @id @default(uuid())
+  documentType       String
+  documentNumber     String
+  documentImage      String
+  status             VerificationStatus @default(PENDING)
+  verifiedAt         DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  userId             String             @unique
+  rejectionReason    String?            @db.Text
+  verificationMethod String?
+  verifiedBy         String?
+  user               User               @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([verifiedBy])
+}
+
+model Connect {
+  id           String   @id @default(uuid())
+  amount       Int
+  price        Float
+  description  String?  @db.Text
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  userId       String
+  maxPurchase  Int?
+  minPurchase  Int?
+  validityDays Int?
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model ConnectTransaction {
+  id            String            @id @default(uuid())
+  amount        Int
+  price         Float
+  status        TransactionStatus @default(PENDING)
+  paymentMethod String
+  transactionId String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  userId        String
+  user          User              @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Ticket {
+  id            String         @id @default(cuid())
+  title         String
+  description   String        @db.Text
+  status        TicketStatus  @default(OPEN)
+  priority      TicketPriority @default(MEDIUM)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  contract      Contract      @relation(fields: [contractId], references: [id])
+  contractId    String
+  createdBy     User          @relation("TicketCreator", fields: [createdById], references: [id])
+  createdById   String
+  assignedTo    User          @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  assignedToId  String
+
+  @@index([contractId])
+  @@index([createdById])
+  @@index([assignedToId])
+}
+
+model Contract {
+  id                   String         @id @default(cuid())
+  status              ContractStatus @default(PENDING)
+  amount              Float
+  startDate           DateTime
+  endDate             DateTime
+  terms               String
+  submissionData      Json?
+  submissionDescription String?      @db.Text
+  submittedAt         DateTime?
+  clientFeedback      String?        @db.Text
+  reviewedAt          DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  proposal            Proposal       @relation(fields: [proposalId], references: [id])
+  proposalId          String         @unique
+  tickets             Ticket[]
+
+  @@index([proposalId])
+}
+
+enum Role {
+  ADMIN
+  FREELANCER
+  CLIENT
+}
+
+enum JobStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ProposalStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum TimeEntryStatus {
+  IN_PROGRESS
+  COMPLETED
+  APPROVED
+  REJECTED
+}
+
+enum CreditType {
+  EARNED
+  PURCHASED
+  BONUS
+  REFUND
+}
+
+enum CreditStatus {
+  ACTIVE
+  USED
+  EXPIRED
+  CANCELLED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum DisputeStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum ContractStatus {
+  PENDING
+  FREELANCER_ACCEPTED
+  CLIENT_ACCEPTED
+  ACTIVE
+  PENDING_REVIEW
+  COMPLETED
+  CANCELLED
+  UNDER_ADMIN_REVIEW
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}

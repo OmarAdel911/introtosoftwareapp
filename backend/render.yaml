@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: egseekers-backend
+    env: node
+    plan: starter
+    buildCommand: npm install && npx prisma generate && npx prisma db push
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    healthCheckPath: /api/health
+    autoDeploy: true
+    branch: main
+    rootDir: .
+    dockerfilePath: .
+    dockerContext: .
+    dockerCommand: npm start
+    dockerfile: |
+      FROM node:18-alpine
+      WORKDIR /app
+      COPY package*.json ./
+      RUN npm ci --only=production
+      COPY . .
+      RUN npx prisma generate
+      EXPOSE 10000
+      CMD ["npm", "start"]
