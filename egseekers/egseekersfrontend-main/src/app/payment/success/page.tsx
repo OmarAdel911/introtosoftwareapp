@@ -76,15 +76,63 @@ export default function PaymentSuccessPage() {
             }
             throw verifyError
           }
-        } else if (paymentId) {
-          // Escrow payment - just show success, webhook will handle it
-          setStatus("success")
-          setMessage("Payment successful! Your payment has been processed.")
-          toast.success("Payment successful!")
+        } else if (paymentId || searchParams.get("creditTransactionId")) {
+          // Check if it's a credit purchase
+          const paymentType = searchParams.get("type")
+          const creditTransactionId = searchParams.get("creditTransactionId")
           
-          setTimeout(() => {
-            router.push("/job-poster/dashboard")
-          }, 3000)
+          if (paymentType === "credit" || creditTransactionId) {
+            // Credit purchase - verify payment
+            try {
+              const response = await axios.post(
+                `${config.apiUrl}/credit-purchase/verify-payment`,
+                { sessionId, creditTransactionId },
+                {
+                  headers: { Authorization: `Bearer ${token}` }
+                }
+              )
+
+              if (response.data.success) {
+                setStatus("success")
+                setMessage("Payment successful! Your credits have been added to your account.")
+                toast.success("Credits purchased successfully!")
+                
+                // Refresh credits data immediately
+                setTimeout(() => {
+                  router.push("/job-poster/credits")
+                  // Force a page reload to ensure fresh data
+                  window.location.href = "/job-poster/credits"
+                }, 2000)
+              } else {
+                throw new Error(response.data.message || "Payment verification failed")
+              }
+            } catch (verifyError) {
+              // If payment was already processed (by webhook), still show success
+              if (axios.isAxiosError(verifyError) && verifyError.response?.status === 404) {
+                const errorMessage = verifyError.response?.data?.message || "";
+                if (errorMessage.includes("already processed") || errorMessage.includes("webhook")) {
+                  setStatus("success")
+                  setMessage("Payment successful! Your credits have been added to your account.")
+                  toast.success("Credits purchased successfully!")
+                  
+                  setTimeout(() => {
+                    router.push("/job-poster/credits")
+                  }, 3000)
+                  return
+                }
+              }
+              throw verifyError
+            }
+          } else {
+            // Escrow payment - just show success, webhook will handle it
+            setStatus("success")
+            setMessage("Payment successful! Your payment has been processed.")
+            toast.success("Payment successful!")
+            
+            setTimeout(() => {
+              router.push("/job-poster/dashboard")
+            }, 3000)
+          }
         } else {
           throw new Error("No transaction or payment ID provided")
         }
@@ -130,9 +178,17 @@ export default function PaymentSuccessPage() {
         </CardHeader>
         <CardContent className="flex flex-col items-center space-y-4">
           {status === "success" && (
-            <Button asChild className="w-full">
-              <Link href="/freelancer/connects">Go to Connects</Link>
-            </Button>
+            <>
+              {searchParams.get("type") === "credit" ? (
+                <Button asChild className="w-full">
+                  <Link href="/job-poster/credits">Go to Credits</Link>
+                </Button>
+              ) : (
+                <Button asChild className="w-full">
+                  <Link href="/freelancer/connects">Go to Connects</Link>
+                </Button>
+              )}
+            </>
           )}
           {status === "error" && (
             <Button asChild variant="outline" className="w-full">

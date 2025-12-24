@@ -363,6 +363,111 @@ router.post('/:id/accept', auth, async (req, res) => {
       newStatus = ContractStatus.ACTIVE;
     }
 
+    // If client is accepting and contract will become ACTIVE, hold credits (escrow) - transfer happens on completion
+    if (isClient && newStatus === ContractStatus.ACTIVE) {
+      const contractAmount = contract.amount;
+      const freelancerId = contract.proposal.freelancerId;
+      
+      try {
+        // Check if credits are already held/transferred for this contract
+        const existingEscrow = await prisma.credit.findFirst({
+          where: {
+            userId: userId,
+            sourceId: id,
+            sourceType: 'CONTRACT_ESCROW',
+            status: 'ON_HOLD'
+          }
+        });
+
+        if (existingEscrow) {
+          // Credits already held, skip
+          console.log(`Credits already held for contract ${id}`);
+        } else {
+          // Use transaction to ensure atomicity
+          await prisma.$transaction(async (tx) => {
+            // Check if client has enough credits (inside transaction to prevent race conditions)
+            const activeCredits = await tx.credit.findMany({
+              where: {
+                userId: userId,
+                status: 'ACTIVE',
+                OR: [
+                  { expiresAt: null },
+                  { expiresAt: { gt: new Date() } },
+                ],
+              },
+              orderBy: {
+                createdAt: 'asc', // Use oldest credits first
+              },
+            });
+
+            const totalAvailable = activeCredits.reduce((sum, credit) => sum + credit.amount, 0);
+
+            if (totalAvailable < contractAmount) {
+              throw new Error(`Insufficient credits. You have ${totalAvailable.toFixed(2)} EGP credits, but need ${contractAmount.toFixed(2)} EGP for this contract. Please purchase more credits.`);
+            }
+
+            // Hold credits from client (mark as ON_HOLD for escrow)
+            let remainingAmount = contractAmount;
+            const heldCredits = [];
+
+            for (const credit of activeCredits) {
+              if (remainingAmount <= 0) break;
+
+              const holdAmount = Math.min(remainingAmount, credit.amount);
+              remainingAmount -= holdAmount;
+
+              if (holdAmount === credit.amount) {
+                // Mark entire credit as ON_HOLD
+                await tx.credit.update({
+                  where: { id: credit.id },
+                  data: {
+                    status: 'ON_HOLD',
+                    sourceId: id,
+                    sourceType: 'CONTRACT_ESCROW',
+                    description: `Escrow for contract ${id} - ${contract.proposal.job.title}`
+                  }
+                });
+                heldCredits.push({ id: credit.id, amount: holdAmount });
+              } else {
+                // Split credit: create new ON_HOLD entry, reduce original
+                await tx.credit.create({
+                  data: {
+                    amount: holdAmount,
+                    type: credit.type,
+                    status: 'ON_HOLD',
+                    sourceId: id,
+                    sourceType: 'CONTRACT_ESCROW',
+                    description: `Escrow for contract ${id} - ${contract.proposal.job.title}`,
+                    userId: userId,
+                    expiresAt: credit.expiresAt
+                  }
+                });
+
+                // Update original credit to reduce amount
+                await tx.credit.update({
+                  where: { id: credit.id },
+                  data: {
+                    amount: credit.amount - holdAmount
+                  }
+                });
+                heldCredits.push({ id: credit.id, amount: holdAmount });
+              }
+            }
+
+            console.log(`Held ${contractAmount} EGP credits from client ${userId} for contract ${id} (escrow)`);
+          });
+        }
+      } catch (creditError) {
+        console.error('Error processing credit escrow:', creditError);
+        // If it's an insufficient credits error, return 400, otherwise 500
+        const statusCode = creditError.message.includes('Insufficient credits') ? 400 : 500;
+        return res.status(statusCode).json({ 
+          success: false,
+          error: creditError.message || 'Failed to process credit escrow' 
+        });
+      }
+    }
+
     // Update the contract using the Prisma enum
     const updatedContract = await prisma.contract.update({
       where: { id },
@@ -543,10 +648,73 @@ router.put('/:contractId/complete', auth, async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to complete contract' });
     }
 
-    // Start a transaction to update contract, job status and create notifications
-    const result = await prisma.$transaction(async (prisma) => {
+    // Start a transaction to update contract, job status, transfer credits, and create notifications
+    const result = await prisma.$transaction(async (tx) => {
+      const contractAmount = contract.amount;
+      const clientId = contract.proposal.job.clientId;
+      const freelancerId = contract.proposal.freelancerId;
+
+      // Check if credits are already transferred for this contract
+      const existingTransfer = await tx.credit.findFirst({
+        where: {
+          userId: freelancerId,
+          sourceId: contractId,
+          sourceType: 'CONTRACT_PAYMENT',
+          status: 'ACTIVE'
+        }
+      });
+
+      if (!existingTransfer) {
+        // Find and deduct ON_HOLD credits from client
+        const onHoldCredits = await tx.credit.findMany({
+          where: {
+            userId: clientId,
+            sourceId: contractId,
+            sourceType: 'CONTRACT_ESCROW',
+            status: 'ON_HOLD'
+          },
+          orderBy: {
+            createdAt: 'asc'
+          }
+        });
+
+        const totalOnHold = onHoldCredits.reduce((sum, credit) => sum + credit.amount, 0);
+
+        if (totalOnHold < contractAmount) {
+          console.warn(`Warning: On-hold credits (${totalOnHold}) less than contract amount (${contractAmount}) for contract ${contractId}`);
+        }
+
+        // Mark on-hold credits as USED (deduct from escrow)
+        for (const credit of onHoldCredits) {
+          await tx.credit.update({
+            where: { id: credit.id },
+            data: {
+              status: 'USED',
+              description: `Escrow released for completed contract ${contractId} - ${contract.proposal.job.title}`
+            }
+          });
+        }
+
+        // Transfer credits to freelancer
+        await tx.credit.create({
+          data: {
+            amount: contractAmount,
+            type: 'EARNED',
+            status: 'ACTIVE',
+            sourceId: contractId,
+            sourceType: 'CONTRACT_PAYMENT',
+            description: `Payment from completed contract ${contractId} - ${contract.proposal.job.title}`,
+            userId: freelancerId
+          }
+        });
+
+        console.log(`Transferred ${contractAmount} EGP credits from client ${clientId} to freelancer ${freelancerId} for completed contract ${contractId}`);
+      } else {
+        console.log(`Credits already transferred for contract ${contractId}`);
+      }
+
       // Update contract status to COMPLETED
-      const updatedContract = await prisma.contract.update({
+      const updatedContract = await tx.contract.update({
         where: { id: contractId },
         data: { status: 'COMPLETED' },
         include: {
@@ -564,27 +732,27 @@ router.put('/:contractId/complete', auth, async (req, res) => {
       });
 
       // Update job status to COMPLETED
-      await prisma.job.update({
+      await tx.job.update({
         where: { id: contract.proposal.job.id },
         data: { status: 'COMPLETED' }
       });
 
       // Create notification for the freelancer
-      await prisma.notification.create({
+      await tx.notification.create({
         data: {
           userId: contract.proposal.freelancer.id,
           title: 'Contract Completed',
-          message: `The contract for "${contract.proposal.job.title}" has been completed.`,
+          message: `The contract for "${contract.proposal.job.title}" has been completed. Payment of ${contractAmount} EGP has been transferred to your account.`,
           read: false
         }
       });
 
       // Create notification for the client
-      await prisma.notification.create({
+      await tx.notification.create({
         data: {
           userId: contract.proposal.job.clientId,
           title: 'Contract Completed',
-          message: `The contract for "${contract.proposal.job.title}" has been completed.`,
+          message: `The contract for "${contract.proposal.job.title}" has been completed. Payment of ${contractAmount} EGP has been released to the freelancer.`,
           read: false
         }
       });
@@ -867,37 +1035,149 @@ router.post('/:contractId/review', auth, async (req, res) => {
       ]);
     }
 
-    // Update contract status
-    const updatedContract = await prisma.contract.update({
-      where: { id: contractId },
-      data: {
-        status: newStatus,
-        clientFeedback: feedback,
-        reviewedAt: new Date()
-      },
-      include: {
-        proposal: {
-          include: {
-            job: {
-              include: {
-                client: true
-              }
+    // Update contract status and handle credit transfer if completed
+    let updatedContract;
+    if (accepted && newStatus === 'COMPLETED') {
+      // Use transaction for contract completion with credit transfer
+      updatedContract = await prisma.$transaction(async (tx) => {
+        const contractAmount = contract.amount;
+        const clientId = contract.proposal.job.clientId;
+        const freelancerId = contract.proposal.freelancerId;
+
+        // Check if credits are already transferred
+        const existingTransfer = await tx.credit.findFirst({
+          where: {
+            userId: freelancerId,
+            sourceId: contractId,
+            sourceType: 'CONTRACT_PAYMENT',
+            status: 'ACTIVE'
+          }
+        });
+
+        if (!existingTransfer) {
+          // Find and deduct ON_HOLD credits from client
+          const onHoldCredits = await tx.credit.findMany({
+            where: {
+              userId: clientId,
+              sourceId: contractId,
+              sourceType: 'CONTRACT_ESCROW',
+              status: 'ON_HOLD'
             },
-            freelancer: true
+            orderBy: {
+              createdAt: 'asc'
+            }
+          });
+
+          const totalOnHold = onHoldCredits.reduce((sum, credit) => sum + credit.amount, 0);
+
+          if (totalOnHold < contractAmount) {
+            console.warn(`Warning: On-hold credits (${totalOnHold}) less than contract amount (${contractAmount}) for contract ${contractId}`);
+          }
+
+          // Mark on-hold credits as USED (deduct from escrow)
+          for (const credit of onHoldCredits) {
+            await tx.credit.update({
+              where: { id: credit.id },
+              data: {
+                status: 'USED',
+                description: `Escrow released for completed contract ${contractId} - ${contract.proposal.job.title}`
+              }
+            });
+          }
+
+          // Transfer credits to freelancer
+          await tx.credit.create({
+            data: {
+              amount: contractAmount,
+              type: 'EARNED',
+              status: 'ACTIVE',
+              sourceId: contractId,
+              sourceType: 'CONTRACT_PAYMENT',
+              description: `Payment from completed contract ${contractId} - ${contract.proposal.job.title}`,
+              userId: freelancerId
+            }
+          });
+
+          console.log(`Transferred ${contractAmount} EGP credits from client ${clientId} to freelancer ${freelancerId} for completed contract ${contractId}`);
+        }
+
+        // Update contract status
+        const contractUpdate = await tx.contract.update({
+          where: { id: contractId },
+          data: {
+            status: newStatus,
+            clientFeedback: feedback,
+            reviewedAt: new Date()
+          },
+          include: {
+            proposal: {
+              include: {
+                job: {
+                  include: {
+                    client: true
+                  }
+                },
+                freelancer: true
+              }
+            }
+          }
+        });
+
+        // Update job status to COMPLETED if contract is completed
+        if (newStatus === 'COMPLETED') {
+          await tx.job.update({
+            where: { id: contract.proposal.job.id },
+            data: { status: 'COMPLETED' }
+          });
+        }
+
+        // Create notification for freelancer
+        await tx.notification.create({
+          data: {
+            userId: contract.proposal.freelancerId,
+            title: accepted ? 'Work Accepted' : 'Work Needs Revision',
+            message: accepted 
+              ? `Your work for "${contract.proposal.job.title}" has been accepted. Payment of ${contractAmount} EGP has been transferred to your account.`
+              : notificationMessage,
+            read: false
+          }
+        });
+
+        return contractUpdate;
+      });
+    } else {
+      // Update contract status (work rejected, no credit transfer)
+      updatedContract = await prisma.contract.update({
+        where: { id: contractId },
+        data: {
+          status: newStatus,
+          clientFeedback: feedback,
+          reviewedAt: new Date()
+        },
+        include: {
+          proposal: {
+            include: {
+              job: {
+                include: {
+                  client: true
+                }
+              },
+              freelancer: true
+            }
           }
         }
-      }
-    });
+      });
 
-    // Create notification for freelancer
-    await prisma.notification.create({
-      data: {
-        userId: contract.proposal.freelancerId,
-        title: accepted ? 'Work Accepted' : 'Work Needs Revision',
-        message: notificationMessage,
-        read: false
-      }
-    });
+      // Create notification for freelancer
+      await prisma.notification.create({
+        data: {
+          userId: contract.proposal.freelancerId,
+          title: accepted ? 'Work Accepted' : 'Work Needs Revision',
+          message: notificationMessage,
+          read: false
+        }
+      });
+    }
 
     res.json({
       success: true,

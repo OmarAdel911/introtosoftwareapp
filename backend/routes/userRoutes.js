@@ -221,6 +221,59 @@ router.put('/profile', auth, async (req, res) => {
   }
 });
 
+// Update user role (for new registrations)
+router.patch('/:userId/role', auth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { role } = req.body;
+
+    // Verify user can only update their own role (or is admin)
+    if (req.user.id !== userId && req.user.role !== 'ADMIN') {
+      return res.status(403).json({ success: false, error: 'Not authorized to update this user' });
+    }
+
+    // Validate role
+    if (!['FREELANCER', 'CLIENT', 'ADMIN'].includes(role)) {
+      return res.status(400).json({ success: false, error: 'Invalid role' });
+    }
+
+    // Check if user exists
+    const user = await prisma.user.findUnique({
+      where: { id: userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    // Update role
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: { role },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        image: true,
+        bio: true,
+        skills: true,
+        hourlyRate: true,
+        title: true,
+        location: true,
+        website: true,
+        linkedin: true,
+        github: true,
+      }
+    });
+
+    res.json({ success: true, user: updatedUser });
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    res.status(500).json({ success: false, error: 'Failed to update user role' });
+  }
+});
+
 // Update password
 router.put('/security/password', auth, async (req, res) => {
   try {

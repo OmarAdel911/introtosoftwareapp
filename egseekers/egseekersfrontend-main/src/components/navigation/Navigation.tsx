@@ -143,6 +143,7 @@ export function Navigation() {
         { label: "My Jobs", href: "/jobs/my-jobs" },
         { label: "Applications", href: "/jobs/applications" },
         { label: "Contracts", href: "/client/contracts" },
+        { label: "Credits", href: "/job-poster/credits" },
         { label: "Profile", href: "/job-poster/profile" },
       ],
     },

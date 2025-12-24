@@ -69,9 +69,13 @@ export default function KeycloakLoginPage() {
       }
     } catch (err) {
       console.error("Login error:", err)
-      if (axios.isAxiosError(err) && err.response?.data?.error) {
-        setError(err.response.data.error)
-        toast.error(err.response.data.error)
+      if (axios.isAxiosError(err) && err.response?.data) {
+        const errorData = err.response.data
+        const errorMessage = errorData.details 
+          ? `${errorData.error}: ${errorData.details}`
+          : errorData.error || "Login failed"
+        setError(errorMessage)
+        toast.error(errorMessage)
       } else {
         setError("An error occurred. Please try again.")
         toast.error("Login failed. Please try again.")

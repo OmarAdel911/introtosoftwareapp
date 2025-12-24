@@ -49,32 +49,69 @@ export default function KeycloakCallbackPage() {
               ? sessionStorage.getItem('keycloak_registration_data') 
               : null
             
+            let finalUser = response.data.user
+            let isNewRegistration = false
+            
             // If we have registration data with role preference, update user role
             if (registrationData) {
               try {
                 const regData = JSON.parse(registrationData)
+                isNewRegistration = true
+                
+                // Update user role if different from what was selected during registration
                 if (regData.role && regData.role !== response.data.user.role) {
-                  // Update role if different (this would require a backend call)
-                  // For now, we'll use the role from the sync
-                  sessionStorage.removeItem('keycloak_registration_data')
+                  try {
+                    // Update role via backend API
+                    const updateResponse = await axios.patch(
+                      `${config.apiUrl}/users/${response.data.user.id}/role`,
+                      { role: regData.role },
+                      {
+                        headers: { Authorization: `Bearer ${response.data.token}` }
+                      }
+                    )
+                    
+                    if (updateResponse.data.success && updateResponse.data.user) {
+                      finalUser = updateResponse.data.user
+                      // Generate new token with updated role (backend will need to regenerate)
+                      // For now, we'll update the user object and login
+                      // The token will be refreshed on next request if needed
+                      login(response.data.token, finalUser)
+                    } else {
+                      // If update fails, use original user data
+                      login(response.data.token, response.data.user)
+                    }
+                  } catch (updateError) {
+                    console.error('Error updating user role:', updateError)
+                    // Continue with original user data if update fails
+                    login(response.data.token, response.data.user)
+                  }
                 } else {
-                  sessionStorage.removeItem('keycloak_registration_data')
+                  // Role matches, just login
+                  login(response.data.token, response.data.user)
                 }
+                
+                // Clear registration data
+                sessionStorage.removeItem('keycloak_registration_data')
               } catch (e) {
                 console.error('Error parsing registration data:', e)
                 sessionStorage.removeItem('keycloak_registration_data')
+                login(response.data.token, response.data.user)
               }
+            } else {
+              // No registration data, just login normally
+              login(response.data.token, response.data.user)
             }
             
-            // Login user with the token
-            login(response.data.token, response.data.user)
-            
             setStatus("success")
-            setMessage("Authentication successful! Redirecting...")
+            setMessage(
+              isNewRegistration 
+                ? "Registration successful! Welcome to EGSeekers. Redirecting..." 
+                : "Authentication successful! Redirecting..."
+            )
             
             // Redirect based on role
             setTimeout(() => {
-              const role = response.data.user.role
+              const role = finalUser.role
               if (role === "FREELANCER") {
                 router.push("/freelancer/dashboard")
               } else if (role === "CLIENT") {

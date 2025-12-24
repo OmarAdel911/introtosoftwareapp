@@ -7,18 +7,53 @@ const auth = require('../middleware/auth');
 // Get user's credits
 router.get('/', auth, async (req, res) => {
   try {
-    const credits = await prisma.credit.findMany({
+    // Get all credits for transaction history
+    const allCredits = await prisma.credit.findMany({
       where: {
         userId: req.user.id,
-        status: 'ACTIVE'
+      },
+      orderBy: {
+        createdAt: 'desc'
       }
     });
 
-    const totalActiveCredits = credits.reduce((sum, credit) => sum + credit.amount, 0);
+    // Calculate active credits (only ACTIVE status with positive amount, exclude ON_HOLD)
+    const activeCredits = allCredits.filter(
+      credit => credit.status === 'ACTIVE' && credit.amount > 0
+    );
+    const totalActiveCredits = activeCredits.reduce((sum, credit) => sum + credit.amount, 0);
+
+    // Calculate on-hold credits (escrow)
+    const onHoldCredits = allCredits.filter(
+      credit => credit.status === 'ON_HOLD' && credit.amount > 0
+    );
+    const totalOnHoldCredits = onHoldCredits.reduce((sum, credit) => sum + credit.amount, 0);
+
+    // Calculate total purchased (PURCHASED type with positive amount)
+    const purchasedCredits = allCredits.filter(
+      credit => credit.type === 'PURCHASED' && credit.amount > 0 && credit.sourceType === 'CREDIT_PURCHASE'
+    );
+    const totalPurchased = purchasedCredits.reduce((sum, credit) => sum + credit.amount, 0);
+
+    // Calculate total earned (EARNED type - for freelancers)
+    const earnedCredits = allCredits.filter(
+      credit => credit.type === 'EARNED' && credit.amount > 0
+    );
+    const totalEarned = earnedCredits.reduce((sum, credit) => sum + credit.amount, 0);
+
+    // Calculate total used (USED type or negative amount)
+    const usedCredits = allCredits.filter(
+      credit => credit.type === 'USED' || credit.amount < 0
+    );
 
     res.json({
-      credits,
-      totalActiveCredits
+      credits: allCredits,
+      totalActiveCredits,
+      totalOnHoldCredits,
+      totalPurchased,
+      totalEarned,
+      totalUsed: usedCredits.length,
+      activeCredits: activeCredits.length
     });
   } catch (error) {
     console.error('Error fetching credits:', error);

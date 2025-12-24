@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { config } from '@/config/env';
+import { api } from '@/lib/api/api';
 
 
 export interface User {
@@ -64,21 +65,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const response = await axios.get<User>(
-        `${config.apiUrl}/auth/me`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
-      );
+      // Use the configured api instance which has proper error handling
+      const response = await api.get<User>('/auth/me');
       
       setUser(response.data);
       localStorage.setItem('user', JSON.stringify(response.data));
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to refresh user:', error);
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
-        logout();
+      if (error.response) {
+        console.error('Error details:', {
+          message: error.message,
+          code: error.code,
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          url: error.config?.url,
+          baseURL: error.config?.baseURL,
+        });
+        
+        if (error.response?.status === 401) {
+          logout();
+        }
+      } else if (error.message === 'Network Error' || error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK') {
+        console.warn('Network error - backend may be unavailable at:', config.apiUrl);
+        console.warn('Please ensure:');
+        console.warn('1. Backend is running on port 5001');
+        console.warn('2. Backend is accessible at:', config.apiUrl);
+        console.warn('3. CORS is properly configured');
+        // Don't logout on network errors, just use cached data
+        // The api instance already has retry logic
       }
     }
   };

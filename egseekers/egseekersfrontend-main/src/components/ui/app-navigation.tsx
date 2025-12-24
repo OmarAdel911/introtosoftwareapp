@@ -29,6 +29,7 @@ import {
   Bell, 
   CreditCard, 
   DollarSign, 
+  Wallet,
   FileCheck, 
   AlertTriangle, 
   Shield, 
@@ -134,6 +135,11 @@ export function AppNavigation() {
           title: "Earnings",
           items: [
             {
+              title: "Credits",
+              href: "/freelancer/credits",
+              icon: <Wallet className="h-4 w-4" />,
+            },
+            {
               title: "Payment History",
               href: "/payments",
               icon: <CreditCard className="h-4 w-4" />,
@@ -166,6 +172,11 @@ export function AppNavigation() {
         {
           title: "Payments",
           items: [
+            {
+              title: "Credits",
+              href: "/job-poster/credits",
+              icon: <Wallet className="h-4 w-4" />,
+            },
             {
               title: "Payment History",
               href: "/payments",

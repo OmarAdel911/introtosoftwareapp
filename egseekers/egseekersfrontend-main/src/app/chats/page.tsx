@@ -37,7 +37,7 @@ export default function ChatsPage() {
         }
 
         console.log('Fetching chats...')
-        const response = await fetch('${config.apiUrl}/messages/conversations', {
+        const response = await fetch(`${config.apiUrl}/messages/conversations`, {
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -54,7 +54,17 @@ export default function ChatsPage() {
 
         const data = await response.json()
         console.log('Chats data:', data)
-        setChats(data)
+        
+        // Handle both array and object responses
+        if (Array.isArray(data)) {
+          setChats(data)
+        } else if (data.data && Array.isArray(data.data)) {
+          setChats(data.data)
+        } else if (data.success && Array.isArray(data.data)) {
+          setChats(data.data)
+        } else {
+          setChats([])
+        }
       } catch (err) {
         console.error('Error fetching chats:', err)
         setError(err instanceof Error ? err.message : 'Failed to load chats')

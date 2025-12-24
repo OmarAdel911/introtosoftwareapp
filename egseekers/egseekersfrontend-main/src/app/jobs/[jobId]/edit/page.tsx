@@ -66,19 +66,25 @@ export default function EditJobPage() {
           headers: { Authorization: `Bearer ${token}` }   
         })
 
-        const job = response.data
-        setJob(job)
+        // Handle API response structure: { success: true, data: job } or { data: job }
+        const jobData = response.data.success ? response.data.data : response.data
+        
+        if (!jobData) {
+          throw new Error('Job data not found in response')
+        }
+
+        setJob(jobData)
         setFormData({
-          title: job.title,
-          description: job.description,
-          category: job.category,
-          budget: job.budget.toString(),
-          skills: job.skills.join(', '),
-          deadline: new Date(job.deadline).toISOString().split('T')[0],
-          jobType: job.jobType || 'fixed',
-          experience: job.experience || 'intermediate',
-          duration: job.duration || '1_to_3_months',
-          location: job.location || 'remote',
+          title: jobData.title || '',
+          description: jobData.description || '',
+          category: jobData.category || '',
+          budget: jobData.budget ? jobData.budget.toString() : '',
+          skills: Array.isArray(jobData.skills) ? jobData.skills.join(', ') : (jobData.skills || ''),
+          deadline: jobData.deadline ? new Date(jobData.deadline).toISOString().split('T')[0] : '',
+          jobType: jobData.jobType || 'fixed',
+          experience: jobData.experience || 'intermediate',
+          duration: jobData.duration || '1_to_3_months',
+          location: jobData.location || 'remote',
         })
       } catch (error: any) {
         console.error('Error fetching job:', error)

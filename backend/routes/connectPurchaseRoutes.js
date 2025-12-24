@@ -230,23 +230,27 @@ router.post('/verify-payment', auth, async (req, res) => {
     // Find transaction
     let transaction;
     try {
-      const txId = transactionId ? parseInt(transactionId) : null;
+      // transactionId is the UUID of the ConnectTransaction record
+      // sessionId is the Stripe checkout session ID stored in transactionId field
+      if (transactionId) {
+        // Try to find by transaction ID (UUID)
+        transaction = await prisma.connectTransaction.findUnique({
+          where: { id: transactionId }
+        });
+      }
       
-      if (!txId) {
-        // Try to find by session ID if transactionId not provided
+      // If not found by ID, try to find by Stripe session ID
+      if (!transaction) {
         transaction = await prisma.connectTransaction.findFirst({
           where: { transactionId: sessionId }
-        });
-      } else {
-        transaction = await prisma.connectTransaction.findUnique({
-          where: { id: txId }
         });
       }
     } catch (dbError) {
       console.error('Database error finding transaction:', dbError);
       return res.status(500).json({ 
         error: 'Database error',
-        message: 'Failed to find transaction'
+        message: 'Failed to find transaction',
+        details: dbError.message
       });
     }
 
@@ -279,24 +283,68 @@ router.post('/verify-payment', auth, async (req, res) => {
     }
 
     // Update transaction status
-    const updatedTransaction = await prisma.connectTransaction.update({
-      where: { id: transaction.id },
-      data: {
-        status: 'COMPLETED',
-        transactionId: session.payment_intent || sessionId
-      }
-    });
+    let updatedTransaction;
+    try {
+      updatedTransaction = await prisma.connectTransaction.update({
+        where: { id: transaction.id },
+        data: {
+          status: 'COMPLETED',
+          transactionId: session.payment_intent || sessionId
+        }
+      });
+    } catch (updateError) {
+      console.error('Error updating transaction:', updateError);
+      return res.status(500).json({ 
+        error: 'Failed to update transaction',
+        message: 'Could not update transaction status',
+        details: updateError.message
+      });
+    }
 
     // Add connects to user's account
-    const connectRecord = await prisma.connect.create({
-      data: {
-        amount: transaction.amount,
-        price: transaction.price,
-        description: `Purchased ${transaction.amount} connects`,
-        userId: userId,
-        isActive: true
+    let connectRecord;
+    try {
+      // Check if connects were already added (in case webhook processed it)
+      const existingConnects = await prisma.connect.findFirst({
+        where: {
+          userId: userId,
+          description: `Purchased ${transaction.amount} connects`,
+          createdAt: {
+            gte: new Date(Date.now() - 60000) // Within last minute
+          }
+        }
+      });
+
+      if (existingConnects) {
+        // Connects already added, likely by webhook
+        return res.json({
+          success: true,
+          message: 'Payment already processed',
+          transaction: updatedTransaction,
+          connects: existingConnects
+        });
       }
-    });
+
+      connectRecord = await prisma.connect.create({
+        data: {
+          amount: transaction.amount,
+          price: transaction.price,
+          description: `Purchased ${transaction.amount} connects`,
+          userId: userId,
+          isActive: true
+        }
+      });
+    } catch (createError) {
+      console.error('Error creating connect record:', createError);
+      // Transaction is already updated, so we should still return success
+      // but log the error for investigation
+      return res.status(500).json({ 
+        error: 'Failed to add connects',
+        message: 'Payment verified but failed to add connects to account. Please contact support.',
+        details: createError.message,
+        transaction: updatedTransaction
+      });
+    }
 
     res.json({
       success: true,
@@ -307,7 +355,8 @@ router.post('/verify-payment', auth, async (req, res) => {
     console.error('Error verifying payment:', error);
     res.status(500).json({ 
       error: 'Failed to verify payment',
-      message: error.message || 'An unexpected error occurred'
+      message: error.message || 'An unexpected error occurred',
+      details: error.stack
     });
   }
 });

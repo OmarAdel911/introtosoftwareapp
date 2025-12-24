@@ -63,7 +63,7 @@ export default function PostJobPage() {
 
       // Send the request to the backend API
       const response = await axios.post(
-        '${config.apiUrl}/jobs',
+        `${config.apiUrl}/jobs`,
         jobData,  
         {
           headers: {

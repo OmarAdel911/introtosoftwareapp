@@ -17,7 +17,8 @@ import {
   Plus,
   Star,
   TrendingUp,
-  Zap
+  Zap,
+  Wallet
 } from "lucide-react"
 import Link from "next/link"
 import type { DashboardStats } from "@/lib/api/dashboard"
@@ -164,11 +165,17 @@ export function JobPosterOverview({ stats, error, recentJobs }: JobPosterOvervie
             </CardTitle>
             <CardDescription>Common tasks and actions</CardDescription>
           </CardHeader>
-          <CardContent className="grid ">
+          <CardContent className="grid gap-3">
             <Button asChild className="bg-gradient-to-r from-primary to-emerald-500 hover:from-primary/90 hover:to-emerald-500/90 text-white transition-all duration-300 hover:scale-105">
               <Link href="/post-job">
                 <Briefcase className="mr-2 h-4 w-4" />
                 Post a New Job
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="transition-all duration-300 hover:scale-105">
+              <Link href="/job-poster/credits">
+                <Wallet className="mr-2 h-4 w-4" />
+                Buy Credits
               </Link>
             </Button>
           </CardContent>

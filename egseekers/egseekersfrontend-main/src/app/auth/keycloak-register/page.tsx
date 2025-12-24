@@ -1,7 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useAuth } from "@/contexts/AuthContext"
 import { config } from "@/config/env"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,6 +18,7 @@ import axios from "axios"
 
 export default function KeycloakRegisterPage() {
   const router = useRouter()
+  const { login } = useAuth()
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -69,32 +71,71 @@ export default function KeycloakRegisterPage() {
     setIsLoading(true)
 
     try {
-      // Register user via Keycloak REST API
-      const keycloakUrl = config.keycloakUrl
-      const realm = config.realm
-      const adminToken = await getAdminToken() // We'll need to implement this or use a different approach
-
-      // For now, redirect to Keycloak registration with pre-filled data
-      const frontendUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'
-      const redirectUri = `${frontendUrl}/auth/keycloak-callback`
+      // Clear any existing Keycloak cookies to prevent session conflicts
+      const cookiesToClear = [
+        'KEYCLOAK_SESSION',
+        'KEYCLOAK_SESSION_LEGACY',
+        'KEYCLOAK_IDENTITY',
+        'KEYCLOAK_IDENTITY_LEGACY',
+        'AUTH_SESSION_ID',
+        'KC_RESTART'
+      ]
       
-      // Store registration data in sessionStorage for after Keycloak registration
-      sessionStorage.setItem('keycloak_registration_data', JSON.stringify({
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        role: formData.role
-      }))
+      cookiesToClear.forEach(cookieName => {
+        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=localhost`
+        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`
+        document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.localhost`
+      })
 
-      // Redirect to Keycloak registration page
-      const registerUrl = `${keycloakUrl}/realms/${realm}/protocol/openid-connect/registrations?client_id=egseekers-backend&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=code&scope=openid profile email&login_hint=${encodeURIComponent(formData.email)}`
-      
-      window.location.href = registerUrl
+      // Register directly via backend API (no Keycloak redirect)
+      // This creates the user in Keycloak and logs them in all in one step
+      const backendUrl = config.apiUrl.replace('/api', '') || 'http://localhost:5001'
+      const response = await axios.post(
+        `${backendUrl}/api/keycloak/direct-register`,
+        {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role
+        }
+      )
+
+      if (response.data.success && response.data.user && response.data.token) {
+        // Login user with the token (no cookies set until now)
+        login(response.data.token, response.data.user)
+        
+        toast.success("Registration successful! Welcome to EGSeekers!")
+        
+        // Redirect based on role
+        setTimeout(() => {
+          const role = response.data.user.role
+          if (role === "FREELANCER") {
+            router.push("/freelancer/dashboard")
+          } else if (role === "CLIENT") {
+            router.push("/job-poster/dashboard")
+          } else {
+            router.push("/")
+          }
+        }, 500)
+      } else if (response.data.requiresLogin) {
+        // User created but needs to log in manually
+        toast.success("Account created! Please log in.")
+        router.push("/auth/keycloak-login")
+      } else {
+        throw new Error("Registration failed")
+      }
     } catch (err) {
       console.error("Registration error:", err)
-      setError("An error occurred. Please try again.")
+      if (axios.isAxiosError(err)) {
+        const errorMessage = err.response?.data?.error || err.response?.data?.message || "Registration failed. Please try again."
+        setError(errorMessage)
+        toast.error(errorMessage)
+      } else {
+        setError("An error occurred. Please try again.")
+        toast.error("Registration failed. Please try again.")
+      }
       setIsLoading(false)
-      toast.error("Registration failed. Please try again.")
     }
   }
 

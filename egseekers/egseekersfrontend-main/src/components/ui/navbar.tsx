@@ -48,36 +48,48 @@ export function Navbar() {
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false)
 
   // Fetch credits and connects when user changes
-  useEffect(() => {
-    const fetchUserData = async () => {
-      if (!user) {
-        setCredits(0)
-        setConnects(0)
-        return
-      }
+  const fetchUserData = async () => {
+    if (!user) {
+      setCredits(0)
+      setConnects(0)
+      return
+    }
 
+    // Fetch credits for both clients and freelancers
+    try {
+      const creditsResponse = await api.get('/credits')
+      setCredits(creditsResponse.data.totalActiveCredits || 0)
+    } catch (creditsError) {
+      console.error('Failed to fetch credits:', creditsError)
+      setCredits(0)
+    }
+    
+    // If user is a freelancer, get connects
+    if (user.role === "FREELANCER") {
       try {
-        // Get credits
-        const creditsResponse = await api.get('/credits')
-        setCredits(creditsResponse.data.totalActiveCredits || 0)
-      } catch (creditsError) {
-        console.error('Failed to fetch credits:', creditsError)
-        setCredits(0)
+        const connectsResponse = await api.get('/connects')
+        setConnects(connectsResponse.data.totalActiveConnects || 0)
+      } catch (connectsError) {
+        console.error('Failed to fetch connects:', connectsError)
+        setConnects(0)
       }
-      
-      // If user is a freelancer, get connects
-      if (user.role === "FREELANCER") {
-        try {
-          const connectsResponse = await api.get('/connects')
-          setConnects(connectsResponse.data.totalActiveConnects || 0)
-        } catch (connectsError) {
-          console.error('Failed to fetch connects:', connectsError)
-          setConnects(0)
-        }
+    }
+  }
+
+  useEffect(() => {
+    fetchUserData()
+  }, [user])
+
+  // Refresh credits/connects when page becomes visible (e.g., after returning from payment)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && user) {
+        fetchUserData()
       }
     }
 
-    fetchUserData()
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [user])
 
   useEffect(() => {
@@ -174,15 +186,23 @@ export function Navbar() {
               <>
                 {/* Credits and Connects Display */}
                 <div className="hidden md:flex items-center space-x-2">
-                  <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-green-50 hover:bg-green-100 transition-all duration-300 group">
-                    <CreditCard className="h-4 w-4 text-green-600 group-hover:text-green-700 transition-colors duration-300" />
-                    <span className="text-sm font-medium text-green-700 group-hover:text-green-800 transition-colors duration-300">{credits} Credits</span>
-                  </div>
+                  {(user.role === "CLIENT" || user.role === "FREELANCER") && (
+                    <Link 
+                      href={user.role === "CLIENT" ? "/job-poster/credits" : "/freelancer/credits"}
+                      className="flex items-center gap-1 px-3 py-1 rounded-full bg-green-50 hover:bg-green-100 transition-all duration-300 group cursor-pointer"
+                    >
+                      <Wallet className="h-4 w-4 text-green-600 group-hover:text-green-700 transition-colors duration-300" />
+                      <span className="text-sm font-medium text-green-700 group-hover:text-green-800 transition-colors duration-300">{credits.toFixed(2)} EGP</span>
+                    </Link>
+                  )}
                   {user.role === "FREELANCER" && (
-                    <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 hover:bg-blue-100 transition-all duration-300 group">
+                    <Link 
+                      href="/freelancer/connects"
+                      className="flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 hover:bg-blue-100 transition-all duration-300 group cursor-pointer"
+                    >
                       <DollarSign className="h-4 w-4 text-blue-600 group-hover:text-blue-700 transition-colors duration-300" />
                       <span className="text-sm font-medium text-blue-700 group-hover:text-blue-800 transition-colors duration-300">{connects} Connects</span>
-                    </div>
+                    </Link>
                   )}
                 </div>
 
@@ -430,15 +450,23 @@ export function Navbar() {
                 <>
                   {/* Credits and Connects Display - Mobile */}
                   <div className="flex items-center space-x-2">
-                    <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-green-50 group">
-                      <CreditCard className="h-4 w-4 text-green-600 group-hover:text-green-700 transition-colors duration-300" />
-                      <span className="text-sm font-medium text-green-700 group-hover:text-green-800 transition-colors duration-300">{credits} Credits</span>
-                    </div>
+                    {(user.role === "CLIENT" || user.role === "FREELANCER") && (
+                      <Link 
+                        href={user.role === "CLIENT" ? "/job-poster/credits" : "/freelancer/credits"}
+                        className="flex items-center gap-1 px-3 py-1 rounded-full bg-green-50 group hover:bg-green-100 transition-all duration-300 cursor-pointer"
+                      >
+                        <Wallet className="h-4 w-4 text-green-600 group-hover:text-green-700 transition-colors duration-300" />
+                        <span className="text-sm font-medium text-green-700 group-hover:text-green-800 transition-colors duration-300">{credits.toFixed(2)} EGP</span>
+                      </Link>
+                    )}
                     {user.role === "FREELANCER" && (
-                      <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 group">
+                      <Link 
+                        href="/freelancer/connects"
+                        className="flex items-center gap-1 px-3 py-1 rounded-full bg-blue-50 group hover:bg-blue-100 transition-all duration-300 cursor-pointer"
+                      >
                         <DollarSign className="h-4 w-4 text-blue-600 group-hover:text-blue-700 transition-colors duration-300" />
                         <span className="text-sm font-medium text-blue-700 group-hover:text-blue-800 transition-colors duration-300">{connects} Connects</span>
-                      </div>
+                      </Link>
                     )}
                   </div>
 

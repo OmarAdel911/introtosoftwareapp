@@ -75,7 +75,9 @@ class WebSocketClient {
 
     // Properly encode the token for the URL
     const encodedToken = encodeURIComponent(token);
-    const wsUrl = `${WS_BASE_URL}?token=${encodedToken}`;
+    // Ensure WS_BASE_URL includes the /ws path
+    const wsBaseUrl = WS_BASE_URL.endsWith('/ws') ? WS_BASE_URL : `${WS_BASE_URL}/ws`;
+    const wsUrl = `${wsBaseUrl}?token=${encodedToken}`;
     console.log('Connecting to WebSocket:', wsUrl);
     
     try {
@@ -134,7 +136,28 @@ class WebSocketClient {
     };
 
     this.ws.onclose = (event) => {
-      console.log('WebSocket disconnected:', event.code, event.reason);
+      // WebSocket close codes: 1000=Normal, 1001=Going Away, 1006=Abnormal, 1008=Policy Violation, 1011=Server Error
+      const closeCodeNames: Record<number, string> = {
+        1000: 'Normal Closure',
+        1001: 'Going Away',
+        1006: 'Abnormal Closure',
+        1008: 'Policy Violation',
+        1011: 'Server Error'
+      };
+      const codeName = closeCodeNames[event.code] || `Unknown (${event.code})`;
+      
+      console.log(`WebSocket disconnected: Code ${event.code} (${codeName}), Reason: ${event.reason || 'No reason provided'}`);
+      
+      // Don't reconnect if closed due to authentication failure (401)
+      if (event.code === 1008 || event.reason?.includes('401') || event.reason?.includes('Invalid token') || event.reason?.includes('No authentication')) {
+        console.warn('WebSocket closed due to authentication failure. Not attempting reconnect.');
+        this.connectionStatus = 'disconnected';
+        this.notifyConnectionStatus();
+        this.cleanup();
+        this.notifyError('Authentication failed. Please log in again.');
+        return;
+      }
+      
       this.connectionStatus = 'disconnected';
       this.notifyConnectionStatus();
       this.cleanup();
@@ -142,7 +165,12 @@ class WebSocketClient {
     };
 
     this.ws.onerror = (error) => {
-      console.error('WebSocket error occurred. WebSocket state:', this.ws?.readyState);
+      const wsState = this.ws?.readyState;
+      // WebSocket states: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
+      const stateNames = ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'];
+      const stateName = stateNames[wsState ?? 3];
+      
+      console.error(`WebSocket error occurred. WebSocket state: ${wsState} (${stateName})`);
       
       if (error instanceof ErrorEvent) {
         console.error('WebSocket error details:', {
@@ -160,15 +188,25 @@ class WebSocketClient {
         });
       }
       
-      // Log the token (without the actual value) to help with debugging
+      // Log connection details for debugging
       const token = localStorage.getItem('token');
-      console.log('Token exists:', !!token, 'Token length:', token ? token.length : 0);
+      const wsBaseUrl = WS_BASE_URL.endsWith('/ws') ? WS_BASE_URL : `${WS_BASE_URL}/ws`;
+      console.log('WebSocket connection details:', {
+        url: wsBaseUrl,
+        tokenExists: !!token,
+        tokenLength: token ? token.length : 0,
+        readyState: wsState,
+        readyStateName: stateName
+      });
       
-      this.connectionStatus = 'disconnected';
-      this.notifyConnectionStatus();
-      this.notifyError('WebSocket connection error');
-      this.cleanup();
-      this.attemptReconnect();
+      // Only attempt reconnect if not already closed due to authentication failure
+      if (wsState !== WebSocket.CLOSED || this.reconnectAttempts === 0) {
+        this.connectionStatus = 'disconnected';
+        this.notifyConnectionStatus();
+        this.notifyError('WebSocket connection error');
+        this.cleanup();
+        this.attemptReconnect();
+      }
     };
   }
 

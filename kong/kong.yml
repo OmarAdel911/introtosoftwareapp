@@ -1,0 +1,339 @@
+_format_version: "3.0"
+_transform: true
+
+# Services - Backend API endpoints
+services:
+  # Main Backend API Service
+  - name: backend-api
+    url: http://backend:10000
+    routes:
+      - name: api-routes
+        paths:
+          - /api
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - PATCH
+          - OPTIONS
+    plugins:
+      - name: cors
+        config:
+          origins:
+            - "*"
+          methods:
+            - GET
+            - POST
+            - PUT
+            - DELETE
+            - PATCH
+            - OPTIONS
+          headers:
+            - Accept
+            - Accept-Version
+            - Content-Length
+            - Content-MD5
+            - Content-Type
+            - Date
+            - Authorization
+            - X-Requested-With
+          exposed_headers:
+            - X-Auth-Token
+          credentials: true
+          max_age: 3600
+      - name: rate-limiting
+        config:
+          minute: 100
+          hour: 1000
+          day: 10000
+          policy: local
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 50
+      - name: response-transformer
+        config:
+          add:
+            headers:
+              - "X-Powered-By:EGSeekers-ESB"
+      - name: correlation-id
+        config:
+          header_name: X-Request-ID
+          generator: uuid
+          echo_downstream: true
+
+  # Health Check Service (no auth required)
+  - name: health-service
+    url: http://backend:10000/api/health
+    routes:
+      - name: health-routes
+        paths:
+          - /health
+        strip_path: true
+        methods:
+          - GET
+
+  # Authentication Service (public endpoints)
+  - name: auth-service
+    url: http://backend:10000/api/auth
+    routes:
+      - name: auth-routes
+        paths:
+          - /api/auth
+        strip_path: false
+        methods:
+          - GET
+          - POST
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 20
+              hour: 200
+              policy: local
+          - name: cors
+            config:
+              origins:
+                - "*"
+              methods:
+                - GET
+                - POST
+                - OPTIONS
+              credentials: true
+
+  # Keycloak Service (public endpoints)
+  - name: keycloak-service
+    url: http://backend:10000/api/keycloak
+    routes:
+      - name: keycloak-routes
+        paths:
+          - /api/keycloak
+        strip_path: false
+        methods:
+          - GET
+          - POST
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 30
+              hour: 300
+              policy: local
+
+  # Stripe Webhook Service (public, needs signature verification)
+  - name: stripe-webhook-service
+    url: http://backend:10000/api/stripe
+    routes:
+      - name: stripe-webhook-routes
+        paths:
+          - /api/stripe
+        strip_path: false
+        methods:
+          - POST
+        plugins:
+          - name: request-size-limiting
+            config:
+              allowed_payload_size: 100
+
+  # Jobs Service (protected)
+  - name: jobs-service
+    url: http://backend:10000/api/jobs
+    routes:
+      - name: jobs-routes
+        paths:
+          - /api/jobs
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - PATCH
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 60
+              hour: 500
+              policy: local
+
+  # Payments Service (protected, higher rate limit)
+  - name: payments-service
+    url: http://backend:10000/api/payments
+    routes:
+      - name: payments-routes
+        paths:
+          - /api/payments
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 30
+              hour: 200
+              policy: local
+
+  # Contracts Service (protected)
+  - name: contracts-service
+    url: http://backend:10000/api/contracts
+    routes:
+      - name: contracts-routes
+        paths:
+          - /api/contracts
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 40
+              hour: 300
+              policy: local
+
+  # Credits Service (protected)
+  - name: credits-service
+    url: http://backend:10000/api/credits
+    routes:
+      - name: credits-routes
+        paths:
+          - /api/credits
+        strip_path: false
+        methods:
+          - GET
+          - POST
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 50
+              hour: 400
+              policy: local
+
+  # Credit Purchase Service (protected)
+  - name: credit-purchase-service
+    url: http://backend:10000/api/credit-purchase
+    routes:
+      - name: credit-purchase-routes
+        paths:
+          - /api/credit-purchase
+        strip_path: false
+        methods:
+          - GET
+          - POST
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 20
+              hour: 100
+              policy: local
+
+  # Connect Purchase Service (protected)
+  - name: connect-purchase-service
+    url: http://backend:10000/api/connect-purchase
+    routes:
+      - name: connect-purchase-routes
+        paths:
+          - /api/connect-purchase
+        strip_path: false
+        methods:
+          - GET
+          - POST
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 20
+              hour: 100
+              policy: local
+
+  # Users Service (protected)
+  - name: users-service
+    url: http://backend:10000/api/users
+    routes:
+      - name: users-routes
+        paths:
+          - /api/users
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - PATCH
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 60
+              hour: 500
+              policy: local
+
+  # Proposals Service (protected)
+  - name: proposals-service
+    url: http://backend:10000/api/proposals
+    routes:
+      - name: proposals-routes
+        paths:
+          - /api/proposals
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - PATCH
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 50
+              hour: 400
+              policy: local
+
+  # Dashboard Service (protected)
+  - name: dashboard-service
+    url: http://backend:10000/api/dashboard
+    routes:
+      - name: dashboard-routes
+        paths:
+          - /api/dashboard
+        strip_path: false
+        methods:
+          - GET
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 60
+              hour: 500
+              policy: local
+
+  # Admin Service (protected, stricter limits)
+  - name: admin-service
+    url: http://backend:10000/api/admin
+    routes:
+      - name: admin-routes
+        paths:
+          - /api/admin
+        strip_path: false
+        methods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - PATCH
+        plugins:
+          - name: rate-limiting
+            config:
+              minute: 30
+              hour: 200
+              policy: local
+
+# Global Plugins
+plugins:
+  - name: prometheus
+    config:
+      per_consumer: true
+      status_code_metrics: true
+      latency_metrics: true
+      bandwidth_metrics: true
+      upstream_health_metrics: true
+

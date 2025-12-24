@@ -31,7 +31,7 @@ export default function Chat({ recipientId, recipientName }: ChatProps) {
         const token = localStorage.getItem('token');
         if (!token) return;
 
-        const response = await axios.get<User>('${config.apiUrl}/auth/me', {
+        const response = await axios.get<User>(`${config.apiUrl}/auth/me`, {
           headers: {
             Authorization: `Bearer ${token}`
           }

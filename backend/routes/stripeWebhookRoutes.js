@@ -56,8 +56,8 @@ async function handleCheckoutSessionCompleted(session) {
     const metadata = session.metadata;
     
     if (metadata.type === 'CONNECT_PURCHASE') {
-      const transactionId = parseInt(metadata.transactionId);
-      const userId = parseInt(metadata.userId);
+      const transactionId = metadata.transactionId;
+      const userId = metadata.userId;
       const connects = parseInt(metadata.connects);
 
       // Update transaction status
@@ -81,6 +81,66 @@ async function handleCheckoutSessionCompleted(session) {
       });
 
       console.log(`✅ Connect purchase completed: Transaction ${transactionId}, User ${userId}, ${connects} connects`);
+    } else if (metadata.type === 'CREDIT_PURCHASE') {
+      const creditTransactionId = metadata.creditTransactionId;
+      const userId = metadata.userId;
+      const credits = parseFloat(metadata.credits);
+
+      if (!creditTransactionId) {
+        console.error('❌ Credit purchase webhook missing creditTransactionId');
+        return;
+      }
+
+      // Find the pending credit transaction
+      const pendingTransaction = await prisma.credit.findUnique({
+        where: { id: creditTransactionId }
+      });
+
+      if (pendingTransaction && pendingTransaction.sourceType === 'CREDIT_PURCHASE_PENDING') {
+        // Update the pending transaction with actual credits
+        await prisma.credit.update({
+          where: { id: creditTransactionId },
+          data: {
+            amount: credits,
+            description: `Purchased ${credits} EGP credits`,
+            sourceId: session.payment_intent || session.id,
+            sourceType: 'CREDIT_PURCHASE',
+            status: 'ACTIVE',
+            type: 'PURCHASED'
+          }
+        });
+
+        console.log(`✅ Credit purchase completed (webhook): Transaction ${creditTransactionId}, User ${userId}, ${credits} EGP credits`);
+      } else {
+        // Check if credit already exists to avoid duplicates
+        const existingCredit = await prisma.credit.findFirst({
+          where: {
+            userId: userId,
+            sourceId: session.payment_intent || session.id,
+            sourceType: 'CREDIT_PURCHASE',
+            amount: credits
+          }
+        });
+
+        if (!existingCredit) {
+          // Transaction not found or already processed, create new credit record
+          await prisma.credit.create({
+            data: {
+              amount: credits,
+              type: 'PURCHASED',
+              status: 'ACTIVE',
+              description: `Purchased ${credits} EGP credits`,
+              userId: userId,
+              sourceId: session.payment_intent || session.id,
+              sourceType: 'CREDIT_PURCHASE'
+            }
+          });
+
+          console.log(`✅ Credit purchase completed (new record): User ${userId}, ${credits} EGP credits`);
+        } else {
+          console.log(`ℹ️ Credit purchase already exists: User ${userId}, ${credits} EGP credits`);
+        }
+      }
     }
   } catch (error) {
     console.error('Error handling checkout session completed:', error);

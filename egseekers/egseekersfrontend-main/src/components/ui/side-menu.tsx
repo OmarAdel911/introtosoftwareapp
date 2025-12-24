@@ -102,21 +102,29 @@ export function SideMenu({
         {/* Stats */}
         <div className="p-4 border-b">
           <div className="grid grid-cols-2 gap-4">
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50">
-              <CreditCard className="h-5 w-5 text-green-600" />
-              <div>
-                <p className="text-sm text-green-600">Credits</p>
-                <p className="font-semibold text-green-700">{credits}</p>
-              </div>
-            </div>
+            {(user?.role === "CLIENT" || user?.role === "FREELANCER") && (
+              <Link 
+                href={user.role === "CLIENT" ? "/job-poster/credits" : "/freelancer/credits"}
+                className="flex items-center gap-2 p-3 rounded-lg bg-green-50 hover:bg-green-100 transition-all duration-300 cursor-pointer"
+              >
+                <Wallet className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="text-sm text-green-600">Credits</p>
+                  <p className="font-semibold text-green-700">{credits.toFixed(2)} EGP</p>
+                </div>
+              </Link>
+            )}
             {user?.role === "FREELANCER" && (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50">
+              <Link 
+                href="/freelancer/connects"
+                className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 hover:bg-blue-100 transition-all duration-300 cursor-pointer"
+              >
                 <DollarSign className="h-5 w-5 text-blue-600" />
                 <div>
                   <p className="text-sm text-blue-600">Connects</p>
                   <p className="font-semibold text-blue-700">{connects}</p>
                 </div>
-              </div>
+              </Link>
             )}
           </div>
         </div>
@@ -193,6 +201,12 @@ export function SideMenu({
                 <Button variant="ghost" className="w-full justify-start gap-2 hover:bg-blue-50 hover:text-blue-600">
                   <FileText className="h-5 w-5" />
                   Contracts
+                </Button>
+              </Link>
+              <Link href="/job-poster/credits">
+                <Button variant="ghost" className="w-full justify-start gap-2 hover:bg-blue-50 hover:text-blue-600">
+                  <Wallet className="h-5 w-5" />
+                  Credits
                 </Button>
               </Link>
               <Link href="/job-poster/profile">

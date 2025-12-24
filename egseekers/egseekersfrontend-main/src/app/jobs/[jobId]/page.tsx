@@ -90,7 +90,8 @@ export default function JobDetailsPage() {
         const jobResponse = await axios.get(`${config.apiUrl}/jobs/${jobId}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
-        setJob(jobResponse.data)
+        const jobData = jobResponse.data.success ? jobResponse.data.data : jobResponse.data
+        setJob(jobData)
 
         // Check if user has submitted a proposal for this job
         if (userResponse.data.role === 'FREELANCER') {
@@ -109,12 +110,17 @@ export default function JobDetailsPage() {
         }
 
         // Finally check for active contract if user is the job owner
-        if (jobResponse.data.client.id === userResponse.data.id) {
-          const contractResponse = await axios.get(
-            `${config.apiUrl}/jobs/${jobId}/contract`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          )
-          setHasActiveContract(contractResponse.data.hasActiveContract)
+        if (jobData?.client?.id === userResponse.data.id) {
+          try {
+            const contractResponse = await axios.get(
+              `${config.apiUrl}/jobs/${jobId}/contract`,
+              { headers: { Authorization: `Bearer ${token}` } }
+            )
+            setHasActiveContract(contractResponse.data.hasActiveContract)
+          } catch (error) {
+            // If contract endpoint doesn't exist, just continue
+            console.log('Could not check contract status')
+          }
         }
       } catch (error: any) {
         console.error('Error fetching data:', error)
@@ -163,10 +169,11 @@ export default function JobDetailsPage() {
 
       toast.success('Job closed successfully')
       // Refresh job data
-        const response = await axios.get(`${config.apiUrl}/jobs/${jobId}`, {
+      const response = await axios.get(`${config.apiUrl}/jobs/${jobId}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
-      setJob(response.data)
+      const jobData = response.data.success ? response.data.data : response.data
+      setJob(jobData)
     } catch (error: any) {
       console.error('Error closing job:', error)
       toast.error(error.response?.data?.error || 'Failed to close job')
@@ -202,7 +209,7 @@ export default function JobDetailsPage() {
 
   const isClient = userRole === 'client'
   const isFreelancer = userRole === 'freelancer'
-  const isJobOwner = job.client.id === userId
+  const isJobOwner = job?.client?.id === userId
 
   return (
     <div className="container mx-auto py-8">
@@ -225,7 +232,7 @@ export default function JobDetailsPage() {
                   <div>
                     <CardTitle className="text-2xl font-bold">{job.title}</CardTitle>
                     <CardDescription className="mt-2">
-                      Posted by {job.client.name} • {formatDate(job.postedAt)}
+                      Posted by {job.client?.name || 'Unknown'} • {formatDate(job.postedAt)}
                     </CardDescription>
                   </div>
                   {isJobOwner && (
@@ -296,22 +303,22 @@ export default function JobDetailsPage() {
                       <div className="flex items-center gap-4">
                         <Avatar className="h-12 w-12">
                           <AvatarImage 
-                            src={job.client.avatar ? 
+                            src={job.client?.avatar ? 
                               (job.client.avatar.startsWith('http') 
                                 ? job.client.avatar 
                                 : `https://res.cloudinary.com/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload/${job.client.avatar}`)
                               : undefined
                             } 
-                            alt={job.client.name} 
+                            alt={job.client?.name || 'Client'} 
                           />
                           <AvatarFallback className="bg-gray-100 text-gray-600">
-                            {job.client.name.charAt(0).toUpperCase()}
+                            {job.client?.name?.charAt(0).toUpperCase() || 'U'}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <h3 className="font-medium text-gray-900">{job.client.name}</h3>
+                          <h3 className="font-medium text-gray-900">{job.client?.name || 'Unknown Client'}</h3>
                           <p className="text-sm text-gray-500">
-                            Member since {formatDate(job.client.createdAt)}
+                            Member since {formatDate(job.client?.createdAt)}
                           </p>
                         </div>
                       </div>

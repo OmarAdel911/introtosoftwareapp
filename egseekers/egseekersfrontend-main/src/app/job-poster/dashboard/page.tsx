@@ -119,7 +119,8 @@ export default function JobPosterDashboard() {
           {
             headers: {
               Authorization: `Bearer ${token}`
-            }
+            },
+            timeout: 10000, // 10 second timeout
           }
         )
 
@@ -131,9 +132,14 @@ export default function JobPosterDashboard() {
         setUser(userResponse.data)
       } catch (error) {
         console.error('Auth check error:', error)
-        if (axios.isAxiosError(error) && error.response?.status === 401) {
-          localStorage.removeItem('token')
-          router.push('/login')
+        if (axios.isAxiosError(error)) {
+          if (error.response?.status === 401) {
+            localStorage.removeItem('token')
+            router.push('/login')
+          } else if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') {
+            console.error('Network error - backend may be unavailable at:', config.apiUrl)
+            toast.error('Cannot connect to server. Please ensure the backend is running.')
+          }
         }
       }
     }

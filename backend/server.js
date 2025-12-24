@@ -40,10 +40,12 @@ const proposalRoutes = require('./routes/proposalRoutes');
 const earningsRoutes = require('./routes/earningsRoutes');
 const creditRoutes = require('./routes/creditRoutes');
 const connectPurchaseRoutes = require('./routes/connectPurchaseRoutes');
+const creditPurchaseRoutes = require('./routes/creditPurchaseRoutes');
 const contractRoutes = require('./routes/contractRoutes');
 const iamRoutes = require('./routes/iamRoutes');
 const keycloakRoutes = require('./routes/keycloakRoutes');
 const stripeWebhookRoutes = require('./routes/stripeWebhookRoutes');
+const esbRoutes = require('./routes/esbRoutes');
 const http = require('http');
 const setupWebSocket = require('./websocket');
 const rateLimit = require('express-rate-limit');
@@ -173,7 +175,10 @@ const allowedOrigins = [
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('CORS: Request with no origin, allowing');
+      return callback(null, true);
+    }
     
     // Check if origin matches any allowed origin (string or regex)
     const isAllowed = allowedOrigins.some(allowedOrigin => {
@@ -186,15 +191,19 @@ app.use(cors({
     });
     
     if (isAllowed) {
+      console.log('CORS: Allowing origin:', origin);
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
+      console.log('Allowed origins:', allowedOrigins);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'ngrok-skip-browser-warning']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'ngrok-skip-browser-warning'],
+  exposedHeaders: ['Content-Length', 'Content-Type'],
+  maxAge: 86400 // 24 hours
 }));
 
 // Session middleware (required for Keycloak)
@@ -284,9 +293,11 @@ app.use('/api/proposals', auth, proposalRoutes);
 app.use('/api/earnings', auth, earningsRoutes);
 app.use('/api/credits', auth, creditRoutes);
 app.use('/api/connect-purchase', auth, connectPurchaseRoutes);
+app.use('/api/credit-purchase', auth, creditPurchaseRoutes);
 app.use('/api/contracts', auth, contractRoutes);
 app.use('/api/iam', iamRoutes);
 app.use('/api/keycloak', keycloakRoutes);
+app.use('/api/esb', esbRoutes);
 
 // Error handling middleware
 app.use(errorHandler);

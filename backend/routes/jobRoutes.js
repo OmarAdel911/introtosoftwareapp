@@ -144,12 +144,28 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: "Missing required fields" });
     }
 
+    // Ensure skills is an array
+    let skillsArray = skills;
+    if (!Array.isArray(skills)) {
+      try {
+        skillsArray = typeof skills === 'string' ? JSON.parse(skills) : [skills];
+      } catch (e) {
+        // If parsing fails, treat as comma-separated string
+        skillsArray = typeof skills === 'string' ? skills.split(',').map(s => s.trim()).filter(s => s) : [skills];
+      }
+    }
+
+    // Validate user is authenticated
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, error: "User not authenticated" });
+    }
+
     console.log('Creating job with data:', {
       title,
       description,
       category,
       budget: parseFloat(budget),
-      skills: Array.isArray(skills) ? skills : JSON.parse(skills),
+      skills: skillsArray,
       deadline: deadline ? new Date(deadline) : null,
       jobType,
       experience,
@@ -166,7 +182,7 @@ router.post('/', async (req, res) => {
         description,
         category,
         budget: parseFloat(budget),
-        skills: Array.isArray(skills) ? skills : JSON.parse(skills),
+        skills: skillsArray,
         deadline: deadline ? new Date(deadline) : null,
         jobType,
         experience,

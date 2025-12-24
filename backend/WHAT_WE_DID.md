@@ -235,7 +235,7 @@ User → Backend → Keycloak → Database
 
 ### Long Term:
 1. **Dockerize Everything**
-   - Create `docker-compose.yml`
+   - Create `docker-compose up -docker-compose.yml`
    - Containerize backend, frontend, database
    - Easy deployment
 
