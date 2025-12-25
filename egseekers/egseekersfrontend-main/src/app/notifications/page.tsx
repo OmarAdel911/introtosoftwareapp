@@ -3,10 +3,9 @@
 import React from 'react';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import axios from 'axios';
 import { toast } from 'react-hot-toast';
 import { format } from 'date-fns';
-import { config } from '@/config/env';
+import { api } from '@/lib/api/api';
 
 interface Notification {
   id: string;
@@ -35,14 +34,18 @@ const NotificationsPage = () => {
         return;
       }
 
-      const response = await axios.get(`${config.apiUrl}/notifications`, {
-        headers: { Authorization: `Bearer ${token}` } 
-      });
-
+      const response = await api.get('/notifications');
       setNotifications(response.data);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching notifications:', error);
-      toast.error('Failed to load notifications');
+      if (error.response) {
+        toast.error('Failed to load notifications');
+      } else if (error.message === 'Network Error') {
+        // Network errors are handled by the api instance retry logic
+        console.warn('Network error - backend may be unavailable');
+      } else {
+        toast.error('Failed to load notifications');
+      }
     } finally {
       setLoading(false);
     }
@@ -56,9 +59,7 @@ const NotificationsPage = () => {
         return;
       }
 
-      await axios.put(`${config.apiUrl}/notifications/${id}/read`, {}, {   
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.put(`/notifications/${id}/read`, {});
 
       setNotifications(notifications.map(notification => 
         notification.id === id ? { ...notification, read: true } : notification
@@ -79,9 +80,7 @@ const NotificationsPage = () => {
         return;
       }
 
-      await axios.put(`${config.apiUrl}/notifications/read/all`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.put('/notifications/read/all', {});
 
       setNotifications(notifications.map(notification => ({ ...notification, read: true })));
       toast.success('All notifications marked as read');
@@ -99,9 +98,7 @@ const NotificationsPage = () => {
         return;
       }
 
-      await axios.delete(`${config.apiUrl}/notifications/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/notifications/${id}`);
 
       setNotifications(notifications.filter(notification => notification.id !== id));
       if (selectedNotification?.id === id) {
@@ -122,9 +119,7 @@ const NotificationsPage = () => {
         return;
       }
 
-      await axios.delete(`${config.apiUrl}/notifications/read/all`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete('/notifications/read/all');
 
       setNotifications(notifications.filter(notification => !notification.read));
       setSelectedNotification(null);

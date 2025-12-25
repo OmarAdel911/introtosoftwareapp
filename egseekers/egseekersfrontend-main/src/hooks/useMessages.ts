@@ -51,35 +51,44 @@ export function useMessages(conversationId: string) {
 
       // Connect to WebSocket when the hook mounts
       wsClient.connect()
+    }
+  }, [conversationId, currentUserId])
 
-      // Handle incoming chat messages
-      const handleChatMessage = (data: any) => {
-        if (data.type === 'CHAT_MESSAGE' && data.message) {
-          const message = data.message
-          
-          // Check if the message belongs to this conversation
-          if (
-            (message.senderId === conversationId && message.recipientId === currentUserId) ||
-            (message.senderId === currentUserId && message.recipientId === conversationId)
-          ) {
+  // Separate effect for WebSocket message handling
+  useEffect(() => {
+    if (!currentUserId || !conversationId) return
+
+    // Handle incoming chat messages
+    const handleChatMessage = (data: any) => {
+      if (data.type === 'CHAT_MESSAGE' && data.message) {
+        const message = data.message
+        
+        // Check if the message belongs to this conversation
+        if (
+          (message.senderId === conversationId && message.recipientId === currentUserId) ||
+          (message.senderId === currentUserId && message.recipientId === conversationId)
+        ) {
+          // Use functional update to check for duplicates with current state
+          setMessages(prev => {
             // Check if message already exists to avoid duplicates
-            const messageExists = messages.some(m => m.id === message.id)
+            const messageExists = prev.some(m => m.id === message.id)
             if (!messageExists) {
-              setMessages(prev => [...prev, message])
+              return [...prev, message]
             }
-          }
+            return prev
+          })
         }
       }
-
-      // Subscribe to chat messages
-      wsClient.on('CHAT_MESSAGE', handleChatMessage)
-
-      // Cleanup function
-      return () => {
-        wsClient.off('CHAT_MESSAGE', handleChatMessage)
-      }
     }
-  }, [conversationId, currentUserId, messages])
+
+    // Subscribe to chat messages
+    wsClient.on('CHAT_MESSAGE', handleChatMessage)
+
+    // Cleanup function
+    return () => {
+      wsClient.off('CHAT_MESSAGE', handleChatMessage)
+    }
+  }, [conversationId, currentUserId])
 
   const sendMessage = async (content: string) => {
     if (!currentUserId) {
@@ -88,19 +97,20 @@ export function useMessages(conversationId: string) {
     }
 
     try {
-      // Send message through REST API
+      // Send message through REST API only
+      // The WebSocket will receive the message from the server and add it to state
       const newMessage = await messagesApi.sendMessage(conversationId, content)
       
-      // Also send through WebSocket for real-time delivery
-      try {
-        wsClient.sendChatMessage(conversationId, content)
-      } catch (wsError) {
-        console.error('WebSocket send error:', wsError)
-        // Don't throw here as the REST API call succeeded
-      }
-
-      // Add the message to the local state
-      setMessages(prev => [...prev, newMessage])
+      // Add the message to local state only if it doesn't already exist
+      // (WebSocket might have already added it)
+      setMessages(prev => {
+        const exists = prev.some(m => m.id === newMessage.id)
+        if (!exists) {
+          return [...prev, newMessage]
+        }
+        return prev
+      })
+      
       return newMessage
     } catch (err: any) {
       console.error('Error sending message:', err)
